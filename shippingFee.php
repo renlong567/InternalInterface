@@ -6,7 +6,7 @@
  * and open the template in the editor.
  */
 date_default_timezone_set('Asia/Shanghai');
-ini_set("error_reporting", "E_ALL & ~E_NOTICE");
+// ini_set("error_reporting", "E_ALL & ~E_NOTICE");
 
 if (!empty($_POST['ordersn']) && !empty($_POST['username']) && !empty($_POST['shippingfee']))
 {
@@ -27,34 +27,63 @@ if (!empty($_POST['ordersn']) && !empty($_POST['username']) && !empty($_POST['sh
         exit();
     }
 
-    echo '<meta charset="UTF-8">';
+    echo '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">';
 
     $ordersn = explode("\n", $_POST['ordersn']);
-    $username = trim($_POST['username']);
-    $shippingfee = trim($_POST['shippingfee']);
+    $username = explode("\n", $_POST['username']);
+    $shippingfee = explode("\n", $_POST['shippingfee']);
 
-    $sql = 'UPDATE oneshop_user SET balance=NVL(balance,0)+' . $shippingfee . ' WHERE name=\'' . $username . '\'';
-    try
+    if (count($ordersn) != count($username) || count($ordersn) != count($shippingfee) || count($username) != count($shippingfee))
     {
-        $db->beginTransaction();
-        $db->exec($sql);
-        $db->commit();
+        exit('输入信息数量不相等，请检查');
     }
-    catch (Exception $ex)
-    {
-        $db->rollback();
-        echo $ex->getMessage();
-        echo '<br /><span style="color:red;">退款失败用户：' . $username . ',金额：' . $shippingfee . ',订单号：' . implode(',', $ordersn) . '</span>';
-    }
-    echo '<br /><span style="color:green;">退款成功用户：' . $username . ',金额：' . $shippingfee . ',订单号：' . implode(',', $ordersn) . '</span>';
+    $ok = 0;
+    $fail = 0;
+    $none = 0;
 
-    echo '<br /><a href="./shippingFee.html">返回</a>';
+    foreach ($username as $key => $v)
+    {
+        if ($v)
+        {
+            $sql = 'UPDATE oneshop_user SET balance=NVL(balance,0)+' . $shippingfee[$key] . ' WHERE name=\'' . trim($v) . '\'';
+            try
+            {
+                $db->beginTransaction();
+                $db->exec($sql);
+                $db->commit();
+            }
+            catch (Exception $ex)
+            {
+                $db->rollback();
+                echo $ex->getMessage();
+                echo '<br /><span style="color:red;">退款失败用户：' . $v . ',金额：' . $shippingfee[$key] . ',订单号：' . $ordersn[$key] . '</span>';
+                ++$fail;
+            }
+            echo '<br /><span style="color:green;">退款成功用户：' . $v . ',金额：' . $shippingfee[$key] . ',订单号：' . $ordersn[$key] . '</span>';
+            ++$ok;
+        }
+        else
+        {
+            echo '<br /><span style="color:red;">第' . $key . '行用户名为空,订单号：' . $ordersn[$key] . ',金额：' . $shippingfee[$key] . '</span>';
+            ++$none;
+        }
+    }
+
+    echo '<br />退款完成';
+    $total = $ok + $fail + $none;
+    echo "<br />总计 $total 项：成功 $ok 项，失败 $fail 项，缺少用户名 $none 项";
 
     $time = time();
-    $uid = $db->query('SELECT id FROM oneshop_user WHERE name=\'' . $username . '\'')->fetchColumn();
-    $sql = "INSERT INTO oneshop_accountlog (userid,balance,changetype,changetime,type,changedesc) VALUES ('$uid',$shippingfee,'4',$time,'1','订单：";
-    $sql .= implode(',', $ordersn);
-    $sql .= ' 满100元退邮费\')';
+    $sql = 'INSERT ALL ';
+    foreach ($username as $key => $value)
+    {
+        if($value)
+		{
+			$uid = $db->query('SELECT id FROM oneshop_user WHERE name=\'' . trim($value) . '\'')->fetchColumn();
+			$sql .= "INTO oneshop_accountlog (userid,balance,changetype,changetime,type,changedesc) VALUES ('$uid',$shippingfee[$key],'4',$time,'1','订单：$ordersn[$key] 满100元退邮费') ";
+		}
+    }
+    $sql .= 'SELECT * FROM DUAL';
     try
     {
         $db->beginTransaction();
@@ -70,6 +99,8 @@ if (!empty($_POST['ordersn']) && !empty($_POST['username']) && !empty($_POST['sh
 }
 else
 {
-    echo '信息输入不全';
+    echo '信息输入不全<br />';
 }
+	
+echo '<a href="./shippingFee.html">返回</a>';
 ?>
